@@ -1,5 +1,4 @@
 *.crt
 *.key
-descriptor*.yaml
 pipeline-values.yaml
 .idea

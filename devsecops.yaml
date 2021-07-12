@@ -133,14 +133,69 @@ jobs:
           kp secret list
           kp image save hello-tanzu --tag ${IMAGE_TAG} --local-path artifact/* --wait --registry-ca-cert-path ${REGISTRY_CA}
           kp build list hello-tanzu
-- name: update-config
+- name: vulnerability-scan
   plan:
   - in_parallel:
     - get: app-image
       trigger: true
+  - task: trivy-fs
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: aquasec/trivy
+      inputs:
+      - name: app-image
+      caches:
+      - path: trivy-cache
+      run:
+        path: sh
+        args:
+        - -cex
+        - |
+          trivy --cache-dir trivy-cache fs --severity HIGH,CRITICAL --vuln-type library,os --ignore-unfixed --exit-code 1 app-image/rootfs
+- name: update-config
+  plan:
+  - in_parallel:
+    - get: app-image
+      passed:
+      - vulnerability-scan
+      trigger: true
       params:
-        skip_download: true
+        format: oci
     - get: app-config
+  - task: inspect-image
+    privileged: true
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: springci/spring-boot-jdk11-ci-image
+          tag: master
+      inputs:
+      - name: app-image
+      outputs:
+      - name: inspect
+      run:
+        path: bash
+        args:
+        - -ce
+        - |
+          curl -sL https://github.com/sclevine/yj/releases/download/v5.0.0/yj-linux > yj
+          install yj /usr/local/bin/yj
+          tar xf app-image/image.tar
+          cat sha256* | jq -r '.config.Labels["io.buildpacks.lifecycle.metadata"]' > metadata.json
+          cat <<EOF > inspect/image.yaml
+          app_image: $(cat app-image/repository)@$(cat app-image/digest)
+          base_image:
+            reference: $(cat metadata.json | jq -r .runImage.reference)
+            top_layer: $(cat metadata.json | jq -r .runImage.topLayer)
+          run_image: $(cat metadata.json | jq -r .stack.runImage.image)
+          buildpacks:
+          $(cat metadata.json | jq -r '.buildpacks | map({"id": .key, "version": .version})' | yj -jy)
+          EOF
   - task: update-config
     params:
       APP_EXTERNAL_URL: ((app_external_url))
@@ -154,8 +209,8 @@ jobs:
           repository: springci/spring-boot-jdk11-ci-image
           tag: master
       inputs:
-      - name: app-image
       - name: app-config
+      - name: inspect
       outputs:
       - name: updated-config
       run:
@@ -163,20 +218,20 @@ jobs:
         args:
         - -ce
         - |
-          APP_IMAGE=$(cat app-image/repository)@$(cat app-image/digest)
           git clone app-config updated-config
           cd updated-config
           cat <<EOF > demo/values.yaml
           #@data/values
           #@overlay/match-child-defaults missing_ok=True
           ---
-          app_image: ${APP_IMAGE}
           external_url: ${APP_EXTERNAL_URL}
           EOF
+          cat ../inspect/image.yaml >> demo/values.yaml
           git config --global user.email "${GIT_EMAIL}"
           git config --global user.name "${GIT_NAME}"
-          git diff --color=always
+          git diff --color=always | cat
           git add -A
+          APP_IMAGE=$(grep app_image demo/values.yaml | awk '{print $2}')
           git commit -m "Update app_image to ${APP_IMAGE}"
   - put: app-config
     params:
@@ -213,7 +268,8 @@ jobs:
           EOF
           set -x
           ytt -f app-config/base \
-              -f app-config/demo \
+              -f app-config/demo/registry-secret.yaml \
+              -f app-config/demo/values.yaml \
               -v registry_username=${REGISTRY_USERNAME} \
               -v registry_password=${REGISTRY_PASSWORD} \
           | kapp deploy -a ${APP_NAME} \

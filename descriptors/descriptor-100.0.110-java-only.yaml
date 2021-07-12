@@ -1,0 +1,21 @@
+apiVersion: kp.kpack.io/v1alpha1
+kind: DependencyDescriptor
+defaultClusterBuilder: base
+defaultStack: base
+stores:
+- name: default
+  sources:
+  - image: registry.pivotal.io/tanzu-java-buildpack/java@sha256:e6f8fca2c90179c243b19293a1a3377e45005b28a286a28d13aceb6956743d29
+stacks:
+- name: base
+  buildImage:
+    image: registry.pivotal.io/tanzu-base-bionic-stack/build@sha256:46fcb761f233e134a92b780ac10236cc1c2e6b19d590b2b3b4d285d3f8fd9ecf
+  runImage:
+    image: registry.pivotal.io/tanzu-base-bionic-stack/run@sha256:b6b1612ab2dfa294514fff2750e8d724287f81e89d5e91209dbdd562ed7f7daf
+clusterBuilders:
+- name: base
+  stack: base
+  store: default
+  order:
+  - group:
+    - id: tanzu-buildpacks/java
