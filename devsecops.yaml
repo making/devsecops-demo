@@ -166,7 +166,6 @@ jobs:
         format: oci
     - get: app-config
   - task: inspect-image
-    privileged: true
     config:
       platform: linux
       image_resource:
