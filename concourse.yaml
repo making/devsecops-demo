@@ -1,0 +1,120 @@
+#@ load("@ytt:data", "data")
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: concourse
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kapp-sa
+  namespace: concourse
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kapp-role-binding
+  namespace: concourse
+subjects:
+- kind: ServiceAccount
+  name: kapp-sa
+  namespace: concourse
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+---
+apiVersion: kappctrl.k14s.io/v1alpha1
+kind: App
+metadata:
+  name: concourse
+  namespace: concourse
+spec:
+  syncPeriod: 30s
+  serviceAccountName: kapp-sa
+  fetch:
+  - helmChart:
+      name: concourse
+      version: "15.5.1"
+      repository:
+        url: https://concourse-charts.storage.googleapis.com
+  template:
+  - helmTemplate:
+      valuesFrom:
+      - secretRef:
+          name: concourse-values
+  - ytt:
+      inline:
+        paths:
+          #@yaml/text-templated-strings
+          concourse-ca-key-pair.yaml: |
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: concourse-ca-key-pair
+              namespace: concourse
+            stringData:
+              tls.crt: |
+                (@= "\n    ".join(data.values.ca_crt.splitlines()) @)
+              tls.key: |
+                (@= "\n    ".join(data.values.ca_key.splitlines()) @)
+          concourse-ca-issuer.yaml: |
+            apiVersion: cert-manager.io/v1beta1
+            kind: Issuer
+            metadata:
+              name: concourse-ca-issuer
+              namespace: concourse
+            spec:
+              ca:
+                secretName: concourse-ca-key-pair
+  deploy:
+  - kapp:
+      rawOptions:
+      - --diff-changes=true
+      - --diff-mask=false
+      delete:
+        #! Force delete PVCs, since StatefulSet does not delete them
+        rawOptions:
+        - --apply-ignored=true
+      inspect:
+        rawOptions:
+        - --tree=true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: concourse-values
+  namespace: concourse
+stringData:
+  data.yml: |
+    # https://github.com/concourse/concourse-chart
+    worker:
+      replicas: 1
+      minAvailable: 0
+    web:
+      ingress:
+        enabled: true
+        annotations:
+          cert-manager.io/issuer: concourse-ca-issuer
+          kubernetes.io/tls-acme: "true"
+        hosts:
+        - concourse-127-0-0-1.sslip.io
+        tls:
+        - secretName: concourse-tls
+          hosts:
+          - concourse-127-0-0-1.sslip.io
+    postgresql:
+      postgresqlPassword: admin
+      postgresqlPostgresPassword: admin
+    secrets:
+      localUsers: admin:admin
+    concourse:
+      web:
+        kubernetes:
+          enabled: false
+        externalUrl: https://concourse-127-0-0-1.sslip.io
+        auth:
+          mainTeam:
+            localUser: admin    
+    rbac:
+      create: false

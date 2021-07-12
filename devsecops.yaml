@@ -1,0 +1,225 @@
+resources:
+- name: app-source
+  type: git
+  source:
+    uri: ((app_source_uri))
+    branch: ((app_source_branch))
+- name: app-config
+  type: git
+  source:
+    uri: ((app_config_uri))
+    branch: ((app_config_branch))
+    private_key: ((app_config_private_key))
+- name: app-image
+  type: registry-image
+  source:
+    repository: ((registry_host))/((registry_project))/((app_name))
+    tag: latest
+    username: ((registry_username))
+    password: ((registry_password))
+    ca_certs:
+    - ((registry_ca))
+- name: kp
+  type: github-release
+  source:
+    owner: vmware-tanzu
+    repository: kpack-cli
+  check_every: 24h
+- name: app-sync
+  type: time
+  source:
+    interval: 5m
+jobs:
+- name: unit-test
+  plan:
+  - in_parallel:
+    - get: app-source
+      trigger: true
+  - task: mvn-test
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: springci/spring-boot-jdk11-ci-image
+          tag: master
+      inputs:
+      - name: app-source
+      caches:
+      - path: app-source/m2
+      run:
+        path: bash
+        args:
+        - -c
+        - |
+          set -ex
+          cd app-source
+          rm -rf ~/.m2
+          ln -fs $(pwd)/m2 ~/.m2
+          ./mvnw test -V
+- name: kpack-build
+  plan:
+  - in_parallel:
+    - get: app-source
+      passed:
+      - unit-test
+      trigger: true
+    - get: kp
+      params:
+        globs:
+        - kp-linux-*
+  - task: mvn-package
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: springci/spring-boot-jdk11-ci-image
+          tag: master
+      inputs:
+      - name: app-source
+      outputs:
+      - name: artifact
+      caches:
+      - path: app-source/m2
+      run:
+        path: bash
+        args:
+        - -c
+        - |
+          set -ex
+          cd app-source
+          rm -rf ~/.m2
+          ln -fs $(pwd)/m2 ~/.m2
+          ./mvnw package -DskipTests=true
+          mv target/*.war ../artifact
+  - task: kp-save
+    params:
+      KUBECONFIG_BODY: ((kubeconfig))
+      KUBECONFIG: /tmp/kube
+      IMAGE_TAG: ((registry_host))/((registry_project))/((app_name))
+      REGISTRY_HOST: ((registry_host))
+      REGISTRY_USERNAME: ((registry_username))
+      REGISTRY_PASSWORD: ((registry_password))
+      REGISTRY_CA_BODY: ((registry_ca))
+      REGISTRY_CA: /tmp/ca.crt
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: springci/spring-boot-jdk11-ci-image
+          tag: master
+      inputs:
+      - name: artifact
+      - name: kp
+      run:
+        path: bash
+        args:
+        - -c
+        - |
+          cat <<EOF >> ${KUBECONFIG}
+          ${KUBECONFIG_BODY}
+          EOF
+          cat <<EOF >> ${REGISTRY_CA}
+          ${REGISTRY_CA_BODY}
+          EOF
+          mkdir -p ~/.docker
+          cat <<EOF > ~/.docker/config.json
+          {"auths": {"${REGISTRY_HOST}": {"auth": "$(echo -n ${REGISTRY_USERNAME}:${REGISTRY_PASSWORD} | base64)"}}}
+          EOF
+          install ./kp/kp-linux-* /usr/local/bin/kp
+          set -ex
+          kp secret list
+          kp image save hello-tanzu --tag ${IMAGE_TAG} --local-path artifact/* --wait --registry-ca-cert-path ${REGISTRY_CA}
+          kp build list hello-tanzu
+- name: update-config
+  plan:
+  - in_parallel:
+    - get: app-image
+      trigger: true
+      params:
+        skip_download: true
+    - get: app-config
+  - task: update-config
+    params:
+      APP_EXTERNAL_URL: ((app_external_url))
+      GIT_EMAIL: ((git_email))
+      GIT_NAME: ((git_name))
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: springci/spring-boot-jdk11-ci-image
+          tag: master
+      inputs:
+      - name: app-image
+      - name: app-config
+      outputs:
+      - name: updated-config
+      run:
+        path: bash
+        args:
+        - -ce
+        - |
+          APP_IMAGE=$(cat app-image/repository)@$(cat app-image/digest)
+          git clone app-config updated-config
+          cd updated-config
+          cat <<EOF > demo/values.yaml
+          #@data/values
+          #@overlay/match-child-defaults missing_ok=True
+          ---
+          app_image: ${APP_IMAGE}
+          external_url: ${APP_EXTERNAL_URL}
+          EOF
+          git config --global user.email "${GIT_EMAIL}"
+          git config --global user.name "${GIT_NAME}"
+          git diff --color=always
+          git add -A
+          git commit -m "Update app_image to ${APP_IMAGE}"
+  - put: app-config
+    params:
+      repository: updated-config
+- name: deploy-to-k8s
+  plan:
+  - in_parallel:
+    - get: app-config
+      trigger: true
+    - get: app-sync
+      trigger: true
+  - task: kapp-deploy
+    params:
+      KUBECONFIG_BODY: ((kubeconfig))
+      KUBECONFIG: /tmp/kube
+      APP_NAME: ((app_name))
+      REGISTRY_USERNAME: ((registry_username))
+      REGISTRY_PASSWORD: ((registry_password))
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: k14s/image
+      inputs:
+      - name: app-config
+      run:
+        path: bash
+        args:
+        - -ce
+        - |
+          cat <<EOF >> ${KUBECONFIG}
+          ${KUBECONFIG_BODY}
+          EOF
+          set -x
+          ytt -f app-config/base \
+              -f app-config/demo \
+              -v registry_username=${REGISTRY_USERNAME} \
+              -v registry_password=${REGISTRY_PASSWORD} \
+          | kapp deploy -a ${APP_NAME} \
+              -f - \
+              --diff-changes \
+              --wait-timeout=5m \
+              --diff-mask=false \
+              --yes
+          kapp inspect -a ${APP_NAME} --tree

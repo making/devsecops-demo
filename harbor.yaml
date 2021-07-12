@@ -1,0 +1,124 @@
+#@ load("@ytt:data", "data")
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tanzu-system-registry
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: harbor-extension-sa
+  namespace: tanzu-system-registry
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: harbor-extension-role
+  namespace: tanzu-system-registry
+rules:
+- apiGroups: [ "*" ]
+  resources: [ "*" ]
+  verbs: [ "*" ]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: harbor-extension-rolebinding
+  namespace: tanzu-system-registry
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: harbor-extension-role
+subjects:
+- kind: ServiceAccount
+  name: harbor-extension-sa
+  namespace: tanzu-system-registry
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: harbor-extension-cluster-role
+rules:
+- apiGroups: [ "*" ]
+  resources: [ "clusterroles", "clusterrolebindings", "customresourcedefinitions" ]
+  verbs: [ "*" ]
+- apiGroups: [ "" ]
+  resources: [ "namespaces" ]
+  verbs: [ "list" ]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: harbor-extension-cluster-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: harbor-extension-cluster-role
+subjects:
+- kind: ServiceAccount
+  name: harbor-extension-sa
+  namespace: tanzu-system-registry
+---
+apiVersion: kappctrl.k14s.io/v1alpha1
+kind: App
+metadata:
+  name: harbor
+  namespace: tanzu-system-registry
+  annotations:
+    tmc.cloud.vmware.com/managed: "false"
+spec:
+  syncPeriod: 30s
+  serviceAccountName: harbor-extension-sa
+  fetch:
+  - image:
+      url: projects.registry.vmware.com/tkg/tkg-extensions-templates:v1.3.1_vmware.1
+  template:
+  - ytt:
+      ignoreUnknownComments: true
+      paths:
+      - tkg-extensions/common
+      - tkg-extensions/registry/harbor
+      inline:
+        pathsFrom:
+        - secretRef:
+            name: harbor-data-values
+  deploy:
+  - kapp:
+      rawOptions:
+      - --wait-timeout=5m
+      - --diff-changes=true
+      - --diff-mask=false
+      inspect:
+        rawOptions:
+        - --tree=true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: harbor-data-values
+  namespace: tanzu-system-registry
+stringData:
+  #@yaml/text-templated-strings
+  values.yaml: |-
+    #@data/values
+    #@overlay/match-child-defaults missing_ok=True
+    ---
+    hostname: (@= data.values.harbor_host @)
+    harborAdminPassword: admin
+    secretKey: adminadminadmina
+    database:
+      password: admin
+    core:
+      secret: admin
+      xsrfKey: adminadminadminadminadminadminad
+    jobservice:
+      secret: admin
+    registry:
+      secret: admin
+    clair:
+      enabled: false
+    tlsCertificate:
+      tls.crt: |
+        (@= "\n    ".join(data.values.harbor_tls_crt.splitlines()) @)
+      tls.key: |
+        (@= "\n    ".join(data.values.harbor_tls_key.splitlines()) @)

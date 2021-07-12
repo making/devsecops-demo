@@ -1,0 +1,105 @@
+#@ load("@ytt:data", "data")
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: build-service
+  labels:
+    com.vmware.tanzu.buildservice: ""
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kpack
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: stacks-operator-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: build-service-extention-sa
+  namespace: build-service
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: build-service-extension-rolebinding
+  namespace: build-service
+subjects:
+- kind: ServiceAccount
+  name: build-service-extention-sa
+  namespace: build-service
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+---
+apiVersion: kappctrl.k14s.io/v1alpha1
+kind: App
+metadata:
+  name: build-service
+  namespace: build-service
+  annotations:
+    tmc.cloud.vmware.com/managed: "false"
+spec:
+  syncPeriod: 30s
+  serviceAccountName: build-service-extention-sa
+  fetch:
+  - imgpkgBundle:
+      image: #@ "{}/tanzu-build-service/build-service:1.2.1".format(data.values.harbor_host)
+      secretRef:
+        name: build-service-imgpkg-bundle-secret
+  template:
+  - ytt:
+      paths:
+      - values.yaml
+      - config
+      inline:
+        pathsFrom:
+        - secretRef:
+            name: build-service-data-values
+  - kbld:
+      paths:
+      - "-"
+      - .imgpkg/images.yml
+  deploy:
+  - kapp:
+      rawOptions:
+      - --wait-timeout=5m
+      - --diff-changes=true
+      - --diff-mask=false
+      inspect:
+        rawOptions:
+        - --tree=true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: build-service-imgpkg-bundle-secret
+  namespace: build-service
+stringData:
+  username: admin
+  password: admin
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: build-service-data-values
+  namespace: build-service
+stringData:
+  #@yaml/text-templated-strings
+  values.yaml: |
+    #@data/values
+    ---
+    docker_repository: (@= data.values.harbor_host @)/tanzu-build-service/build-service
+    docker_username: admin
+    docker_password: admin
+    ca_cert_data: |
+      (@= "\n  ".join(data.values.ca_crt.splitlines()) @)
+    disable_smart_warmer: "true"
+    tanzunet_username: "(@= data.values.tanzunet_username @)"
+    tanzunet_password: "(@= data.values.tanzunet_password @)"

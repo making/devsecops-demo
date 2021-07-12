@@ -1,0 +1,8 @@
+#@ load("@ytt:data", "data")
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kapp-controller-config
+  namespace: #@ data.values.namespace
+data:
+  caCerts: #@ data.values.ca_crt
