@@ -487,6 +487,8 @@ Go to `app_external_url` configured in `pipeline-values.yaml` with a browser.
 
 Yeah, it works 👍.
 
+> `deploy-to-k8s` job runs periodically every 5 minutes, and the manifests managed by git and the state on k8s are always synced by `kapp` (a.k.a GitOps).
+
 ## Automatically update Tanzu Build Service dependencies.
 
 TanzuNetDependencyUpdater which will allow your Tanzu Build Service Cluster to automatically update its dependencies when new dependency descriptors are published to TanzuNet since [Tanzu Build Service 1.2](https://docs.pivotal.io/build-service/1-2/release-notes.html#1-2-0).
