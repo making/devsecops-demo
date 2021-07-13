@@ -127,10 +127,10 @@ NAME    TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AG
 envoy   NodePort   10.96.163.153   <none>        80:32676/TCP,443:31721/TCP   5m25s
 ```
 
-Set this IP to a variable named `ENVORY_CLUSTER_IP` for later use.
+Set this IP to a variable named `ENVOY_CLUSTER_IP` for later use.
 
 ```bash
-ENVORY_CLUSTER_IP=$(kubectl get service -n tanzu-system-ingress envoy -o template='{{.spec.clusterIP}}')
+ENVOY_CLUSTER_IP=$(kubectl get service -n tanzu-system-ingress envoy -o template='{{.spec.clusterIP}}')
 ```
 
 ## Install Harbor
@@ -138,7 +138,7 @@ ENVORY_CLUSTER_IP=$(kubectl get service -n tanzu-system-ingress envoy -o templat
 Set the Hostname to route requests to Harbor as follows:
 
 ```bash
-HARBOR_HOST=harbor-$(echo $ENVORY_CLUSTER_IP | sed 's/\./-/g').sslip.io
+HARBOR_HOST=harbor-$(echo $ENVOY_CLUSTER_IP | sed 's/\./-/g').sslip.io
 # harbor-10-96-163-153.sslip.io
 ```
 
@@ -405,7 +405,7 @@ app_config_uri: git@github.com:making/hello-tanzu-config.git # <--- CHANGEME
 app_config_branch: main
 app_config_private_key: |
 $(cat ${HOME}/.ssh/devsecops | sed -e 's/^/  /g')
-app_external_url: https://hello-tanzu-$(echo $ENVORY_CLUSTER_IP | sed 's/\./-/g').sslip.io
+app_external_url: https://hello-tanzu-$(echo $ENVOY_CLUSTER_IP | sed 's/\./-/g').sslip.io
 git_email: makingx+bot@gmail.com
 git_name: making-bot
 EOF
