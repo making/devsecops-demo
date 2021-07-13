@@ -539,6 +539,8 @@ The updated image will be deployed to k8s.
 
 With this pipeline, the image is automatically updated and shipped to k8s every time a new Stack, Store or Builder is released 🙌.
 
+> You can also prevent it from being automatically deploy to k8s by sending a pull request instead of pushing the changes directly to `main` branch.
+
 ## (Bonus) Detects the use of vulnerable libraries
 
 Fork [https://github.com/tanzu-japan/hello-tanzu](https://github.com/tanzu-japan/hello-tanzu) to your account.
