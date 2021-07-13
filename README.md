@@ -483,6 +483,8 @@ Go to `app_external_url` configured in `pipeline-values.yaml` with a browser.
 
 ![image](https://user-images.githubusercontent.com/106908/125297499-3fb41a00-e362-11eb-8a56-1ecede016e07.png)
 
+Yeah, it works 👍.
+
 ## Automatically update Tanzu Build Service dependencies.
 
 TanzuNetDependencyUpdater which will allow your Tanzu Build Service Cluster to automatically update its dependencies when new dependency descriptors are published to TanzuNet since [Tanzu Build Service 1.2](https://docs.pivotal.io/build-service/1-2/release-notes.html#1-2-0).
@@ -531,7 +533,7 @@ The updated image will be deployed to k8s.
 
 ![image](https://user-images.githubusercontent.com/106908/125307551-1cda3380-e36b-11eb-8ec6-bb5cfd4f2404.png)
 
-With this pipeline, the image is automatically updated and shipped to k8s every time a new Stack, Store or Builder is released 👍.
+With this pipeline, the image is automatically updated and shipped to k8s every time a new Stack, Store or Builder is released 🙌.
 
 ## (Bonus) Detects the use of vulnerable libraries
 
