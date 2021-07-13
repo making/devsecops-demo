@@ -10,7 +10,7 @@ git clone https://github.com/tanzu-japan/devsecops-demo.git
 cd devsecops-demo
 ```
 
-> This tutorial has been tested on Mac. It probably works on Linux as well. It won't work on Windows.
+> This tutorial has been tested on Mac. It probably works on Linux with a few step changes. It does not work on Windows.
 
 ## Generate certificates
 
