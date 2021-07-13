@@ -531,5 +531,80 @@ The updated image will be deployed to k8s.
 
 ![image](https://user-images.githubusercontent.com/106908/125307551-1cda3380-e36b-11eb-8ec6-bb5cfd4f2404.png)
 
+## (Bonus) Detects the use of vulnerable libraries
+
+Fork [https://github.com/tanzu-japan/hello-tanzu](https://github.com/tanzu-japan/hello-tanzu) to your account.
+
+![image](https://user-images.githubusercontent.com/106908/125382012-dec32b00-e3cf-11eb-9f2c-10c335fd82e9.png)
+
+
+Change `app_config_uri` in pipeline-values.yaml to the forked uri and update the pipeline
+
+```
+fly -t demo set-pipeline -p devsecops -c devsecops.yaml -l pipeline-values.yaml --non-interactive
+```
+
+Edit `pom.xml` in the forked repository and add a vulnerable dependency bellow inside `<dependencies>`:
+
+```xml
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-collections4</artifactId>
+			<version>4.0</version>
+		</dependency>
+```
+
+![image](https://user-images.githubusercontent.com/106908/125382505-bb4cb000-e3d0-11eb-89e1-d7ddcc2ccdb1.png)
+
+then commit the change.
+
+![image](https://user-images.githubusercontent.com/106908/125382609-eb944e80-e3d0-11eb-860d-b6b11b00fee2.png)
+
+`unit-test` job will be triggered in less than 1min.
+
+![image](https://user-images.githubusercontent.com/106908/125382666-0bc40d80-e3d1-11eb-9987-322c5064a5b9.png)
+
+then `kpack-build` job will follow.
+
+![image](https://user-images.githubusercontent.com/106908/125382696-1c748380-e3d1-11eb-8138-3d02d7bda4ea.png)
+
+After the new image is pushed to Harbor, `vulnerability-scan` job will start. 
+
+![image](https://user-images.githubusercontent.com/106908/125382814-56de2080-e3d1-11eb-8e36-8ebd5cfc3589.png)
+
+The job should fail.
+
+![image](https://user-images.githubusercontent.com/106908/125382887-7bd29380-e3d1-11eb-88a6-4879536a39ca.png)
+
+Because we intentionally used the vulnerable commons-collections 4.0 as reported 😈
+
+![image](https://user-images.githubusercontent.com/106908/125382855-6c534a80-e3d1-11eb-9e3e-1beb013e51df.png)
+
+Let's update the library and fix the vulnerability as follows:
+
+```xml
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-collections4</artifactId>
+			<version>4.4</version>
+		</dependency>
+```
+
+Edit `pom.xml` and commit the change:
+
+![image](https://user-images.githubusercontent.com/106908/125383118-e257b180-e3d1-11eb-8952-58373cc362e4.png)
+
+After `unit-test` and `kpack-build` succeeded again, `vulnerability-scan` job will resume.
+
+![image](https://user-images.githubusercontent.com/106908/125383321-35c9ff80-e3d2-11eb-9344-05969043b629.png)
+
+Since the vulnerability has been fixed the job will be successful, and `update-config` job is started.
+
+![image](https://user-images.githubusercontent.com/106908/125383382-48443900-e3d2-11eb-92d4-0194a0e8f950.png)
+
+And the "safe image" will be shipped to k8s.
+
+![image](https://user-images.githubusercontent.com/106908/125383449-5eea9000-e3d2-11eb-86a6-c7a57b316d57.png)
+
 ---
-You've built a simple DevSecOps pipeline. Congratulations.
+You've built a simple DevSecOps pipeline. Congratulations 🎉.
