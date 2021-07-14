@@ -90,6 +90,7 @@ ytt -f https://github.com/vmware-tanzu/carvel-kapp-controller/releases/download/
 > --data-value-file ca_crt=./certs/ca.crt \
 > | kubectl apply -f -
 > ```
+> However, it is unsure whether this tutorial works with the version of Kapp Controller included in TKG.
 
 ## Install Cert Manager
 
